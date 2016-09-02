@@ -101,6 +101,7 @@
 
 -define(PREFIX_EKAF(Str), <<"ekaf.",Str/binary>>).
 
+
 %%======================================================================
 %% Specs
 %%======================================================================
@@ -125,6 +126,7 @@
                       worker,
                       workers=[],
                       topic,
+					  real_topic,
                       messages=[]::list(),
                       socket,
                       cor_id=0::integer(),
@@ -139,6 +141,7 @@
 %% Used by topic workers
 -record(ekaf_fsm, { id::integer(),
                     topic::binary(),
+					real_topic::binary(),
                     broker:: tuple(),
                     partition::integer(),
                     replica::integer(),

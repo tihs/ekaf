@@ -406,11 +406,13 @@ data_to_message_set(Value, #message_set{ size = Size, messages = Messages }) ->
     #message_set{ size = Size + 1, messages = [#message{value = Value}| Messages] }.
 
 start_child(Metadata, Broker, Topic, Leader, PartitionId)->
-    TopicName = Topic#topic.name,
-    SizeArgs = ?MODULE:get_concurrency_opts(TopicName),
-    NextPoolName = ?MODULE:get_pool_name({TopicName, Broker, PartitionId, Leader }),
+	<<Idx:8, RealTopic/binary>> = Topic,
+	
+    %%TopicName = Topic#topic.name,
+    SizeArgs = ?MODULE:get_concurrency_opts(RealTopic),
+    NextPoolName = ?MODULE:get_pool_name({RealTopic, Broker, PartitionId, Leader }),
 
-    WorkerArgs = [NextPoolName, Metadata, {Broker#broker.host,Broker#broker.port}, TopicName, Leader, PartitionId],
+    WorkerArgs = [NextPoolName, Metadata, {Broker#broker.host,Broker#broker.port}, Topic, Leader, PartitionId],
     [
      begin
          WorkerId = erlang:phash2({WorkerArgs,X}),

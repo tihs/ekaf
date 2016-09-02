@@ -62,15 +62,17 @@ start_link(Name,Args) ->
 %%    and restart if all workers of a partition die
 %% until then queue up tasks
 init([Topic])->
+	<<Idx:8, RealTopic/binary>> = Topic,
+	
     Self = self(),
     PrefixedTopic = ?PREFIX_EKAF(Topic),
-    State = generic_init(Topic),
+    State = generic_init(RealTopic),
     gproc:reg({n,l,PrefixedTopic},[]),
     pg2:create(PrefixedTopic),
     ekaf_picker:join_group_if_not_present(PrefixedTopic, Self),
     gen_fsm:send_event(Self, connect),
-    StatsSocket = ekaf_lib:open_socket_if_statsd_enabled(Topic),
-    {ok, downtime, State#ekaf_server{topic = Topic, worker = Self, statsd_socket = StatsSocket}};
+    StatsSocket = ekaf_lib:open_socket_if_statsd_enabled(RealTopic),
+    {ok, downtime, State#ekaf_server{topic = Topic, real_topic = RealTopic, worker = Self, statsd_socket = StatsSocket}};
 init(_Args) ->
     State = generic_init(any),
     {ok, downtime, State}.
@@ -341,9 +343,9 @@ handle_info({pick, _Topic, Callback}, ready, #ekaf_server{ strategy = sticky_rou
     fsm_next_state(ready, State#ekaf_server{ ctr = Ctr + 1});
 %% if this strategy has been decided (can be configured for all topics, or for specific topics)
 %% then all messages of a tuple form {Key,Bin} will be passed to a function to decide the partition based on Key
-handle_info({pick, Data, Callback}, ready, #ekaf_server{ topic = Topic, strategy = custom,
+handle_info({pick, Data, Callback}, ready, #ekaf_server{ topic = Topic, real_topic = TopicName, strategy = custom,
                                                          workers = [FirstWorker|RestWorkers] = Workers} = State) ->
-    {M,F} = ekaf_lib:get_default(Topic, ?EKAF_CALLBACK_CUSTOM_PARTITION_PICKER_ATOM, {ekaf_callbacks, default_custom_partition_picker}),
+    {M,F} = ekaf_lib:get_default(TopicName, ?EKAF_CALLBACK_CUSTOM_PARTITION_PICKER_ATOM, {ekaf_callbacks, default_custom_partition_picker}),
     {FinalWorker, Next} =
         case (catch M:F(Topic, Data, State)) of
             %% the custom partition cannot or chose not to send the message

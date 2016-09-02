@@ -24,13 +24,13 @@
 %% State Changes
 %%====================================================================
 
-handle_connected(#ekaf_server{ topic = Topic } = State, Socket)->
+handle_connected(#ekaf_server{ real_topic = Topic } = State, Socket)->
     CorId = State#ekaf_server.cor_id + 1,
     Self = self(),
     Request = ekaf_protocol:encode_metadata_request(CorId, "ekaf", [Topic]),
     ekaf_socket:fork(Self, Socket, {send, metadata, Request}).
 
-handle_metadata_during_bootstrapping({metadata, resp, Metadata}, #ekaf_server{ topic = Topic} = State)->
+handle_metadata_during_bootstrapping({metadata, resp, Metadata}, #ekaf_server{ real_topic = RealTopic, topic = Topic} = State)->
     Self = self(),
     BrokersDict = lists:foldl(fun(Broker,Dict)->
                                        dict:append(Broker#broker.node_id,
@@ -42,7 +42,7 @@ handle_metadata_during_bootstrapping({metadata, resp, Metadata}, #ekaf_server{ t
                         %% topic is undefined, so maybe new topic? try again
                         gen_fsm:send_event(Self, connect),
                         TopicsAcc;
-                   (#topic{ name = CurrTopicName } = CurrTopic,TopicsAcc) when CurrTopicName =:= Topic ->
+                   (#topic{ name = CurrTopicName } = CurrTopic,TopicsAcc) when CurrTopicName =:= RealTopic ->
                         %% topic will have CurrTopic#topic.partitions
                         TempStarted =
                             [ begin
@@ -50,7 +50,7 @@ handle_metadata_during_bootstrapping({metadata, resp, Metadata}, #ekaf_server{ t
                                   PartitionId = Partition#partition.id,
                                   case dict:find(Leader, BrokersDict) of
                                       {ok,[Broker]} ->
-                                          ekaf_lib:start_child(Metadata, Broker, CurrTopic, Leader, PartitionId);
+                                          ekaf_lib:start_child(Metadata, Broker, Topic, Leader, PartitionId);
                                       _ ->
                                           ?INFO_MSG("cant find broker ~p in metadata for partition ~p",[Leader, Partition]),
                                           ok

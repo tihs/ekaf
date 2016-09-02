@@ -49,30 +49,33 @@ start_link(Args)->
 %%          {stop, StopReason}
 %%--------------------------------------------------------------------
 init([WorkerId, PoolName, Metadata, Broker, Topic, Leader, Partition]) ->
+	<<Idx:8, RealTopic/binary>> = Topic,
+	
     PartitionPacket = #partition{
       id = Partition,
       leader = Leader
       %% each messge goes in a different messageset, even for batching
      },
     TopicPacket = #topic{
-      name = Topic,
+      name = RealTopic,
       partitions =
       [PartitionPacket]},
     ProducePacket = #produce_request{
       timeout=100,
       topics= [TopicPacket]
      },
-    BufferTTL = ekaf_lib:get_buffer_ttl(Topic),
-    StatsSocket = ekaf_lib:open_socket_if_statsd_enabled(Topic),
+    BufferTTL = ekaf_lib:get_buffer_ttl(RealTopic),
+    StatsSocket = ekaf_lib:open_socket_if_statsd_enabled(RealTopic),
     State = #ekaf_fsm{
       id = WorkerId,
       pool = PoolName,
       metadata = Metadata,
       topic = Topic,
+	  real_topic = RealTopic,
       broker = Broker,
       leader = Leader,
       partition = Partition,
-      max_buffer_size = ekaf_lib:get_max_buffer_size(Topic),
+      max_buffer_size = ekaf_lib:get_max_buffer_size(RealTopic),
       buffer_ttl = BufferTTL,
       kv = dict:new(),
       partition_packet = PartitionPacket,
