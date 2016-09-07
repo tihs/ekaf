@@ -34,9 +34,22 @@ close(Socket) ->
     gen_tcp:close(Socket).
 
 fork(Worker, Socket, Message)->
-    Pid = spawn(fun()-> ekaf_socket:send_then_recv(Worker, Socket) end),
-    gen_tcp:controlling_process(Socket, Pid),
-    Pid ! Message.
+    case Message of 
+        {send, produce_sync, Request} ->
+            case gen_tcp:send(Socket, Request) of
+                ok ->
+                    ok;
+                Reason ->
+                    ?INFO_MSG("send_then_recv produce cant handle ~p",[Reason]),
+                    gen_fsm:send_event(Worker, {stop, Reason})
+            end;
+
+        {send, metadata, Request} ->
+		    Pid = spawn(fun()-> ekaf_socket:send_then_recv(Worker, Socket) end),
+		    gen_tcp:controlling_process(Socket, Pid),
+		    Pid ! Message
+    end.	
+
 
 %% send metadata packet on a new process, that waits for a reply
 %% when it gets the metadata, it decodes it and sends to the fsm

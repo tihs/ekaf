@@ -71,7 +71,7 @@ init([Topic])->
     pg2:create(PrefixedTopic),
     ekaf_picker:join_group_if_not_present(PrefixedTopic, Self),
     gen_fsm:send_event(Self, connect),
-    StatsSocket = ekaf_lib:open_socket_if_statsd_enabled(RealTopic),
+    StatsSocket = ekaf_lib:open_socket_if_statsd_enabled(RealTopic),	
     {ok, downtime, State#ekaf_server{topic = Topic, real_topic = RealTopic, worker = Self, statsd_socket = StatsSocket}};
 init(_Args) ->
     State = generic_init(any),
@@ -207,9 +207,19 @@ ready({timeout, Timer, <<"reconnect">> = TimeoutKey}, State)->
     fsm_next_state(ready, State);
 ready({timeout, Timer, <<"refresh">> = TimeoutKey}, #ekaf_server{
               strategy = Strategy,
-              max_buffer_size = Max, ctr = Ctr, topic = Topic, workers = Workers} = State) ->
+              max_buffer_size = Max, ctr = Ctr, topic = Topic, workers = Workers, last_push_time = LastPushTime, msg_cache = MsgCache} = State) ->
     gen_fsm:cancel_timer(Timer),
     gen_fsm:start_timer(1000, TimeoutKey),
+	
+	
+	{MegaSecs, Secs, _} = os:timestamp(),
+	NewMsgCache = if ((MegaSecs * 1000000 + Secs) - LastPushTime > ?EKAF_TIMEOUT_SEND) andalso (length(MsgCache) > 0) ->
+						[Worker|_] = Workers,
+						gen_fsm:send_event(Worker, {produce_async, MsgCache}),
+						[];
+				   true ->
+					    MsgCache
+				end,
 
     ToPick = case Strategy of
                  sticky_round_robin when Ctr > Max ->
@@ -223,16 +233,16 @@ ready({timeout, Timer, <<"refresh">> = TimeoutKey}, #ekaf_server{
                true ->
                    case ekaf_server_lib:handle_pick({pick, Topic, undefined}, self(), State) of
                        {error,_}->
-                           State#ekaf_server{ ctr = 0 };
+                           State#ekaf_server{ ctr = 0 , msg_cache = NewMsgCache};
                        {NextWorker, NextState} when Strategy =:= strict_round_robin->
                            Members = pg2:get_local_members(?PREFIX_EKAF(Topic)),
                            NextWorkers = case Workers of [] -> Members; _ -> case State#ekaf_server.workers -- Members of [] -> Workers; _ -> Members end end,
-                           NextState#ekaf_server{ ctr = 0, worker = NextWorker, workers =  NextWorkers};
+                           NextState#ekaf_server{ ctr = 0, worker = NextWorker, workers =  NextWorkers, msg_cache = NewMsgCache};
                        {NextWorker, NextState} ->
-                           NextState#ekaf_server{ ctr = 0, worker = NextWorker}
+                           NextState#ekaf_server{ ctr = 0, worker = NextWorker, msg_cache = NewMsgCache}
                    end;
                _ ->
-                   State
+                   State#ekaf_server{msg_cache = NewMsgCache}
            end,
     fsm_next_state(ready, Next);
 
@@ -335,9 +345,18 @@ handle_sync_event(_Event, _From, StateName, State) ->
 %%          {next_state, NextStateName, NextStateData, Timeout} |
 %%          {stop, Reason, NewStateData}
 %%--------------------------------------------------------------------
-handle_info({pick, _Topic, Callback}, ready, #ekaf_server{ strategy = strict_round_robin, workers = [Worker|Workers] } = State) ->
-    Callback ! {ok,Worker},
-    fsm_next_state(ready, State#ekaf_server{ workers = lists:append(Workers,[Worker])} );
+handle_info({pick, _Topic, Callback}, ready, #ekaf_server{ strategy = strict_round_robin, msg_cache = MsgCache, last_push_time = LastPushTime, workers = [Worker|Workers] } = State) ->
+	{Event, Data} = Callback,
+	{NewMsgCache, TimeStamp} = if length(MsgCache) > ?EKAF_MAX_MSG_CACHE ->
+						   gen_fsm:send_event(Worker, {Event, [Data | MsgCache]}),
+						   {MegaSecs, Secs, _} = os:timestamp(),
+						   {[], MegaSecs * 1000000 + Secs};
+					   true->
+						   {[Data | MsgCache], LastPushTime}
+					end,
+	
+    %%Callback ! {ok,Worker},
+    fsm_next_state(ready, State#ekaf_server{ workers = lists:append(Workers,[Worker]), msg_cache = NewMsgCache, last_push_time = TimeStamp} );
 handle_info({pick, _Topic, Callback}, ready, #ekaf_server{ strategy = sticky_round_robin, worker = Worker, ctr = Ctr } = State) ->
     Callback ! {ok, Worker},
     fsm_next_state(ready, State#ekaf_server{ ctr = Ctr + 1});

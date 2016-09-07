@@ -96,16 +96,7 @@ common_async(Event, Topic, [{Key,Data}|Rest])->
 %% but ekaf:pick creates a new process that blocks instead
 %% this way the worker doesnt wait for the action to finish
 common_async(Event, Topic, Data)->
-    ekaf:pick(Topic, fun(Worker)->
-                             case Worker of
-                                 {error,{retry,_N}} ->
-                                     common_async(Event, Topic, Data);
-                                 {error,_}=E ->
-                                     E;
-                                 _ ->
-                                     gen_fsm:send_event(Worker, {Event, Data})
-                             end
-                     end),
+    ekaf:pick(Topic, {Event, Data}),
     ok.
 
 %% When a key is passed, it is assumed that you will shard it to a partition

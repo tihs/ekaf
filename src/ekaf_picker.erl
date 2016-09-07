@@ -45,15 +45,7 @@ pick_async(Topic,Callback)->
     PrefixedTopic = ?PREFIX_EKAF(Topic),
     RegName = (catch gproc:where({n,l,PrefixedTopic})),
     TempCallback = fun(_With)->
-                           Pid = spawn(fun()->
-                                               receive
-                                                   {ok, Worker}->
-                                                       Callback(Worker);
-                                                   _UE ->
-                                                       {error, _UE}
-                                               end
-                                       end),
-                           gproc:send({n,l,PrefixedTopic}, {pick, Topic, Pid})
+                           gproc:send({n,l,PrefixedTopic}, {pick, Topic, Callback})
                    end,
     case RegName of
         {'EXIT',Reason} ->
