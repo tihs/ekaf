@@ -12,6 +12,7 @@
 -define(EKAF_PUSH_TO_STATSD_ENABLED              , ekaf_push_to_statsd_enabled).
 -define(EKAF_DEFAULT_PUSH_TO_STATSD_ENABLED      , false).
 -define(EKAF_SYNC_TIMEOUT                        , 5000).
+-define(EKAF_SERVER_MAX                        , 10).
 -define(EKAF_MAX_MSG_CACHE                        , 10).
 -define(EKAF_TIMEOUT_SEND                        , 3).
 

@@ -405,11 +405,15 @@ handle_info({pick, Data, Callback}, ready, #ekaf_server{ topic = Topic, real_top
     end,
     fsm_next_state(ready, Next);
 handle_info({pick, _Topic, Callback}, ready, #ekaf_server{ worker = Worker} = State) ->
-    Callback ! {ok, Worker},
-    fsm_next_state(ready, State);
+	{_, Messages} = Callback,
+	ekaf_server_lib:save_messages(ready, State, Messages);
+    %%Callback ! {ok, Worker},
+    %%fsm_next_state(ready, State);
 handle_info({pick, _, Callback}, StateName, State)->
-    Callback ! {ok, self()},
-    fsm_next_state(StateName, State);
+	{_, Messages} = Callback,
+	ekaf_server_lib:save_messages(ready, State, Messages);
+    %%Callback ! {ok, self()},
+    %%fsm_next_state(StateName, State);
 handle_info({worker, enqueue, Worker}, ready, #ekaf_server{ workers = Workers} = State) ->
     fsm_next_state(ready, State#ekaf_server{ workers = lists:append(Workers--[Worker],[Worker])} );
 handle_info({worker, down, WorkerDown, WorkerId, WorkerDownStateName, WorkerDownState, WorkerDownReason}, _StateName, #ekaf_server{ topic = Topic, worker = Worker, ongoing_metadata = RequestedMetadata, workers = Workers } =  State)->

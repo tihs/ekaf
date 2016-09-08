@@ -22,7 +22,7 @@
          publish/2, batch/2,
          produce_sync_batched/2, produce_async_batched/2,
          produce_sync/2, produce_async/2,get_idx/0,
-         metadata/1, metadata/2, info/1, info/2]).
+         metadata/1, metadata/2, info/1, info/2, topic_init/1]).
 
 start() ->
     application:start(?MODULE).
@@ -81,6 +81,11 @@ metadata(Topic, Timeout)->
             gen_fsm:sync_send_event(Worker, metadata, Timeout)
     end.
 
+topic_init(Topic) ->
+	lists:foldl(fun(X, List) ->  
+		info(<<X:8,Topic/binary>>,?EKAF_SYNC_TIMEOUT)		
+	end, [], lists:seq(0, ?EKAF_SERVER_MAX - 1)).
+
 info(Topic)->
     info(?PREFIX_TOPIC(Topic),?EKAF_SYNC_TIMEOUT).
 info(Topic,Timeout)->
@@ -109,4 +114,4 @@ pick(Topic,Callback)->
 
 get_idx() ->
         {_, _, Msecs} = os:timestamp(),
-        Msecs rem 10.
+        Msecs rem ?EKAF_SERVER_MAX.
